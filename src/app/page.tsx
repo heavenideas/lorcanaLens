@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
@@ -6,9 +5,9 @@ import ImageUploadForm from '@/components/lorcana-lens/ImageUploadForm';
 import CardSearchControl from '@/components/lorcana-lens/CardSearchControl';
 import AlignmentControls, { type AlignmentSettings } from '@/components/lorcana-lens/AlignmentControls';
 import ImageComparisonView from '@/components/lorcana-lens/ImageComparisonView';
+import ImageCropperModal from '@/components/lorcana-lens/ImageCropperModal';
 import { getAllLorcanaCards, type AllCards, type LorcanaCard } from '@/services/lorcana-card';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +20,9 @@ const initialAlignment: AlignmentSettings = {
   rotate: 0,
 };
 
+// Standard Lorcana card aspect ratio (e.g., 63mm x 88mm, approx 7:10)
+const LORCANA_CARD_ASPECT_RATIO = 7 / 10;
+
 export default function LorcanaLensPage() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [originalCard, setOriginalCard] = useState<LorcanaCard | null>(null);
@@ -28,6 +30,12 @@ export default function LorcanaLensPage() {
   const [allCardsData, setAllCardsData] = useState<AllCards | null>(null);
   const [isLoadingCards, setIsLoadingCards] = useState(true);
   const [errorLoadingCards, setErrorLoadingCards] = useState<string | null>(null);
+  
+  const [isCropping, setIsCropping] = useState(false);
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
+  const [uploadedImageDimensions, setUploadedImageDimensions] = useState<{width: number, height: number} | null>(null);
+
+
   const { toast } = useToast();
 
   const fetchCards = useCallback(async () => {
@@ -61,10 +69,35 @@ export default function LorcanaLensPage() {
     fetchCards();
   }, [fetchCards]);
 
-  const handleImageUpload = (imageDataUrl: string) => {
-    setUploadedImage(imageDataUrl);
-    setAlignment(initialAlignment); // Reset alignment for new image
+  const handleImageSelectedForUpload = (imageDataUrl: string) => {
+    setImageToCrop(imageDataUrl);
+    setIsCropping(true);
   };
+
+  const handleCropComplete = (croppedDataUrl: string) => {
+    setUploadedImage(croppedDataUrl);
+
+    // Get dimensions of the cropped image for AlignmentControls preview
+    const img = new window.Image();
+    img.onload = () => {
+      setUploadedImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.src = croppedDataUrl;
+    
+    setImageToCrop(null);
+    setIsCropping(false);
+    setAlignment(initialAlignment); 
+    toast({
+      title: "Image Cropped & Loaded",
+      description: "Your card image has been cropped and is ready for alignment.",
+    });
+  };
+
+  const handleCropCancel = () => {
+    setImageToCrop(null);
+    setIsCropping(false);
+  };
+
 
   const handleCardSelect = (card: LorcanaCard) => {
     setOriginalCard(card);
@@ -91,10 +124,19 @@ export default function LorcanaLensPage() {
         </p>
       </header>
 
+      {isCropping && imageToCrop && (
+        <ImageCropperModal
+          imageDataUrl={imageToCrop}
+          aspectRatio={LORCANA_CARD_ASPECT_RATIO}
+          onCropComplete={handleCropComplete}
+          onCancel={handleCropCancel}
+        />
+      )}
+
       <main className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Left Column: Upload and Search */}
         <div className="md:col-span-1 space-y-6">
-          <ImageUploadForm onImageUpload={handleImageUpload} />
+          <ImageUploadForm onImageUpload={handleImageSelectedForUpload} />
           
           {isLoadingCards && (
             <Card>
@@ -127,6 +169,8 @@ export default function LorcanaLensPage() {
               alignment={alignment} 
               onAlignmentChange={handleAlignmentChange} 
               onReset={handleResetAlignment}
+              uploadedImageDimensions={uploadedImageDimensions}
+              originalCardAspectRatio={LORCANA_CARD_ASPECT_RATIO}
             />
           )}
           <ImageComparisonView
