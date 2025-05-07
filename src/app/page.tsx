@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
@@ -20,8 +21,8 @@ const initialAlignment: AlignmentSettings = {
   rotate: 0,
 };
 
-// Standard Lorcana card aspect ratio (e.g., 63mm x 88mm, approx 7:10)
-const LORCANA_CARD_ASPECT_RATIO = 7 / 10;
+// Official Lorcana card image aspect ratio: 1468px width / 2048px height
+const LORCANA_CARD_ASPECT_RATIO = 1468 / 2048;
 
 export default function LorcanaLensPage() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
