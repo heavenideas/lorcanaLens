@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ZoomIn, ZoomOut, Search, Maximize, Minimize, Wand2 } from 'lucide-react';
 import type { AlignmentSettings } from './AlignmentControls';
+import { Label } from '@/components/ui/label'; // Added import for Label
 
 interface ImageComparisonViewProps {
   uploadedImage: string | null;
@@ -46,7 +47,9 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
 
   const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
     setIsPanning(false);
-    e.currentTarget.style.cursor = zoomLevel > 1 ? 'grab' : 'default';
+    if (comparisonContainerRef.current) {
+        comparisonContainerRef.current.style.cursor = zoomLevel > 1 ? 'grab' : 'default';
+    }
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -71,13 +74,20 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
   
   useEffect(() => {
     const el = comparisonContainerRef.current;
+    
+    const onMouseLeave = (e: MouseEvent) => {
+        if (el) { // Check if el is still defined
+            handleMouseUp(e as unknown as React.MouseEvent<HTMLDivElement>);
+        }
+    };
+
     if (el) {
-      el.addEventListener('mouseleave', (e) => handleMouseUp(e as unknown as React.MouseEvent<HTMLDivElement>));
+      el.addEventListener('mouseleave', onMouseLeave);
       return () => {
-        el.removeEventListener('mouseleave', (e) => handleMouseUp(e as unknown as React.MouseEvent<HTMLDivElement>));
+        el.removeEventListener('mouseleave', onMouseLeave);
       };
     }
-  }, [isPanning]);
+  }, [isPanning, zoomLevel]); // Added zoomLevel to dependencies of useEffect for cursor updates
 
 
   if (!uploadedImage || !originalCardImage) {
@@ -108,10 +118,10 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex justify-center items-center space-x-2 mb-4">
-          <Button variant="outline" size="icon" onClick={handleZoomOut} aria-label="Zoom out">
+          <Button variant="outline" size="icon" onClick={handleZoomOut} aria-label="Zoom out" disabled={zoomLevel <= 0.5}>
             <ZoomOut className="h-5 w-5" />
           </Button>
-          <Button variant="outline" size="icon" onClick={handleZoomIn} aria-label="Zoom in">
+          <Button variant="outline" size="icon" onClick={handleZoomIn} aria-label="Zoom in" disabled={zoomLevel >= 5}>
             <ZoomIn className="h-5 w-5" />
           </Button>
           <Button variant="outline" size="icon" onClick={resetZoomPan} aria-label="Reset zoom and pan">
@@ -131,7 +141,7 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
             className="absolute inset-0"
             style={{
               transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-              transition: 'transform 0.1s linear',
+              transition: 'transform 0.1s linear', // Smoother pan/zoom
             }}
           >
             {/* Original Card Image (Bottom Layer) */}
@@ -142,11 +152,12 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
               objectFit="contain"
               unoptimized
               data-ai-hint="card original"
+              priority // Prioritize loading original image
             />
 
             {/* Uploaded Card Image (Top Layer, Clipped) */}
             <div
-              className="absolute inset-0 overflow-hidden"
+              className="absolute inset-0 overflow-hidden" // Ensure this div doesn't affect layout beyond its bounds
               style={{ clipPath: `inset(0 ${100 - sliderValue}% 0 0)` }}
             >
               <NextImage
@@ -166,6 +177,7 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
             <div
               className="absolute top-0 bottom-0 bg-accent w-1 cursor-ew-resize"
               style={{ left: `${sliderValue}%`, transform: 'translateX(-50%)', zIndex: 10 }}
+              // Draggable handle logic could be added here if needed
             />
           )}
         </div>
@@ -180,6 +192,7 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
             value={[sliderValue]}
             onValueChange={(value) => setSliderValue(value[0])}
             className="w-full [&>span:first-child]:bg-accent"
+            aria-label="Image comparison slider"
           />
            <div className="flex justify-between text-xs text-muted-foreground mt-1">
             <span>Uploaded</span>
