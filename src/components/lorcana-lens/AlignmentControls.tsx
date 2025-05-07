@@ -1,14 +1,16 @@
+
 'use client';
 
 import type React from 'react';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Move, ZoomIn, RotateCcw, Eye } from 'lucide-react';
+import { Move, Scaling, RotateCcw, Eye } from 'lucide-react';
 import { Button } from '../ui/button';
 
 export interface AlignmentSettings {
-  scale: number;
+  scaleX: number;
+  scaleY: number;
   offsetX: number; // in pixels, relative to center
   offsetY: number; // in pixels, relative to center
   rotate: number; // in degrees
@@ -69,7 +71,7 @@ const AlignmentPreview: React.FC<{
     height: uHeight,
     left: `calc(50% - ${uWidth/2}px)`, // Center before transform
     top: `calc(50% - ${uHeight/2}px)`,  // Center before transform
-    transform: `translate(${alignment.offsetX * (previewSize/400)}px, ${alignment.offsetY * (previewSize/400)}px) scale(${alignment.scale}) rotate(${alignment.rotate}deg)`, // Scale down offsets for preview
+    transform: `translate(${alignment.offsetX * (previewSize/400)}px, ${alignment.offsetY * (previewSize/400)}px) scale(${alignment.scaleX}, ${alignment.scaleY}) rotate(${alignment.rotate}deg)`, // Scale down offsets for preview
     transformOrigin: 'center center',
     border: '1px dashed hsl(var(--primary))',
     opacity: 0.7,
@@ -134,14 +136,25 @@ const AlignmentControls: React.FC<AlignmentControlsProps> = ({
       <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-2 space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="scale-slider" className="flex items-center"><ZoomIn className="mr-2 h-4 w-4" />Scale: {alignment.scale.toFixed(2)}x</Label>
+            <Label htmlFor="scaleX-slider" className="flex items-center"><Scaling className="mr-2 h-4 w-4" />Scale X: {alignment.scaleX.toFixed(2)}x</Label>
             <Slider
-              id="scale-slider"
+              id="scaleX-slider"
               min={0.5}
               max={2}
               step={0.01}
-              value={[alignment.scale]}
-              onValueChange={(value) => handleSliderChange('scale', value)}
+              value={[alignment.scaleX]}
+              onValueChange={(value) => handleSliderChange('scaleX', value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="scaleY-slider" className="flex items-center"><Scaling className="mr-2 h-4 w-4" />Scale Y: {alignment.scaleY.toFixed(2)}x</Label>
+            <Slider
+              id="scaleY-slider"
+              min={0.5}
+              max={2}
+              step={0.01}
+              value={[alignment.scaleY]}
+              onValueChange={(value) => handleSliderChange('scaleY', value)}
             />
           </div>
           <div className="space-y-2">

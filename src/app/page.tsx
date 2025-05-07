@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
@@ -13,7 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
 
 const initialAlignment: AlignmentSettings = {
-  scale: 1,
+  scaleX: 1,
+  scaleY: 1,
   offsetX: 0,
   offsetY: 0,
   rotate: 0,

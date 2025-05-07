@@ -148,7 +148,7 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
       ctx.translate(centerX, centerY);
       ctx.translate(alignment.offsetX, alignment.offsetY);
       ctx.rotate(alignment.rotate * Math.PI / 180);
-      ctx.scale(alignment.scale, alignment.scale);
+      ctx.scale(alignment.scaleX, alignment.scaleY);
       ctx.translate(-centerX, -centerY);
 
       ctx.globalCompositeOperation = 'difference';
@@ -191,7 +191,7 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
   }
 
   const uploadedImageStyle: React.CSSProperties = {
-    transform: `scale(${alignment.scale}) translate(${alignment.offsetX}px, ${alignment.offsetY}px) rotate(${alignment.rotate}deg)`,
+    transform: `scale(${alignment.scaleX}, ${alignment.scaleY}) translate(${alignment.offsetX}px, ${alignment.offsetY}px) rotate(${alignment.rotate}deg)`,
     transformOrigin: 'center center',
     transition: 'transform 0.2s ease-out',
   };
