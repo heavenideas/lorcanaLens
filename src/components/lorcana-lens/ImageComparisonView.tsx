@@ -7,9 +7,9 @@ import NextImage from 'next/image';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ZoomIn, ZoomOut, Search, Maximize, Minimize, Wand2 } from 'lucide-react';
+import { ZoomIn, ZoomOut, Search, Maximize, Minimize, Wand2, LayersIcon } from 'lucide-react';
 import type { AlignmentSettings } from './AlignmentControls';
-import { Label } from '@/components/ui/label'; // Added import for Label
+import { Label } from '@/components/ui/label';
 
 interface ImageComparisonViewProps {
   uploadedImage: string | null;
@@ -29,6 +29,9 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   
   const comparisonContainerRef = useRef<HTMLDivElement>(null);
+  const [isDifferenceMode, setIsDifferenceMode] = useState(false);
+  const differenceCanvasRef = useRef<HTMLCanvasElement>(null);
+
 
   const handleZoomIn = () => setZoomLevel(prev => Math.min(prev * 1.2, 5));
   const handleZoomOut = () => setZoomLevel(prev => Math.max(prev / 1.2, 0.5));
@@ -57,7 +60,6 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
       const newX = e.clientX - panStart.x;
       const newY = e.clientY - panStart.y;
 
-      // Boundary checks for panning
       const containerRect = comparisonContainerRef.current.getBoundingClientRect();
       const imageWidth = containerRect.width * zoomLevel;
       const imageHeight = containerRect.height * zoomLevel;
@@ -76,18 +78,102 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
     const el = comparisonContainerRef.current;
     
     const onMouseLeave = (e: MouseEvent) => {
-        if (el) { // Check if el is still defined
+        if (el) {
             handleMouseUp(e as unknown as React.MouseEvent<HTMLDivElement>);
         }
     };
 
     if (el) {
       el.addEventListener('mouseleave', onMouseLeave);
+      el.style.cursor = zoomLevel > 1 ? 'grab' : 'default'; // Update cursor on zoomLevel change
       return () => {
         el.removeEventListener('mouseleave', onMouseLeave);
       };
     }
-  }, [isPanning, zoomLevel]); // Added zoomLevel to dependencies of useEffect for cursor updates
+  }, [isPanning, zoomLevel, isDifferenceMode]);
+
+
+  useEffect(() => {
+    if (!isDifferenceMode || !differenceCanvasRef.current || !uploadedImage || !originalCardImage) {
+      return;
+    }
+
+    const canvas = differenceCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const originalImg = new window.Image();
+    const uploadedImg = new window.Image();
+    let originalLoaded = false, uploadedLoaded = false;
+
+    const draw = () => {
+      if (!originalLoaded || !uploadedLoaded || !canvas.parentElement) return;
+
+      const container = canvas.parentElement;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = container.clientWidth * dpr;
+      canvas.height = container.clientHeight * dpr;
+      canvas.style.width = `${container.clientWidth}px`;
+      canvas.style.height = `${container.clientHeight}px`;
+      ctx.scale(dpr, dpr);
+
+      const displayWidth = container.clientWidth;
+      const displayHeight = container.clientHeight;
+
+      ctx.clearRect(0, 0, displayWidth, displayHeight);
+
+      const getDrawParams = (img: HTMLImageElement, dw: number, dh: number) => {
+          const imgAspect = img.naturalWidth / img.naturalHeight;
+          const canvasAspect = dw / dh;
+          let drawWidth, drawHeight, x, y;
+          if (imgAspect > canvasAspect) { // Wider than tall
+              drawWidth = dw;
+              drawHeight = dw / imgAspect;
+          } else { // Taller than wide or square
+              drawHeight = dh;
+              drawWidth = dh * imgAspect;
+          }
+          x = (dw - drawWidth) / 2;
+          y = (dh - drawHeight) / 2;
+          return { x, y, width: drawWidth, height: drawHeight };
+      };
+      
+      const origParams = getDrawParams(originalImg, displayWidth, displayHeight);
+      ctx.drawImage(originalImg, origParams.x, origParams.y, origParams.width, origParams.height);
+
+      ctx.save();
+      const centerX = displayWidth / 2;
+      const centerY = displayHeight / 2;
+
+      ctx.translate(centerX, centerY);
+      ctx.translate(alignment.offsetX, alignment.offsetY);
+      ctx.rotate(alignment.rotate * Math.PI / 180);
+      ctx.scale(alignment.scale, alignment.scale);
+      ctx.translate(-centerX, -centerY);
+
+      ctx.globalCompositeOperation = 'difference';
+      const upldParams = getDrawParams(uploadedImg, displayWidth, displayHeight);
+      ctx.drawImage(uploadedImg, upldParams.x, upldParams.y, upldParams.width, upldParams.height);
+      
+      ctx.restore(); 
+      ctx.globalCompositeOperation = 'source-over';
+    };
+
+    originalImg.onload = () => { originalLoaded = true; draw(); };
+    uploadedImg.onload = () => { uploadedLoaded = true; draw(); };
+    originalImg.onerror = () => console.error("Original image failed to load for difference.");
+    uploadedImg.onerror = () => console.error("Uploaded image failed to load for difference.");
+    originalImg.src = originalCardImage;
+    uploadedImg.src = uploadedImage;
+
+    const resizeObserver = new ResizeObserver(draw);
+    if(canvas.parentElement) resizeObserver.observe(canvas.parentElement);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+
+  }, [isDifferenceMode, uploadedImage, originalCardImage, alignment]);
 
 
   if (!uploadedImage || !originalCardImage) {
@@ -114,7 +200,7 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
     <Card className="col-span-1 md:col-span-2">
       <CardHeader>
         <CardTitle className="flex items-center"><Search className="mr-2 h-6 w-6" /> Image Comparison</CardTitle>
-        <CardDescription>Slide to compare. Use zoom and pan for detailed inspection.</CardDescription>
+        <CardDescription>Slide to compare. Use zoom and pan for detailed inspection. Toggle difference mode to highlight variations.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex justify-center items-center space-x-2 mb-4">
@@ -127,6 +213,15 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
           <Button variant="outline" size="icon" onClick={resetZoomPan} aria-label="Reset zoom and pan">
             {zoomLevel === 1 && panOffset.x === 0 && panOffset.y === 0 ? <Maximize className="h-5 w-5" /> : <Minimize className="h-5 w-5" />}
           </Button>
+          <Button 
+            variant={isDifferenceMode ? "secondary" : "outline"} 
+            size="icon" 
+            onClick={() => setIsDifferenceMode(!isDifferenceMode)} 
+            aria-label={isDifferenceMode ? "Disable difference mode" : "Enable difference mode"}
+            title={isDifferenceMode ? "Disable Difference Mode" : "Enable Difference Mode"}
+          >
+            <LayersIcon className="h-5 w-5" />
+          </Button>
         </div>
 
         <div
@@ -135,70 +230,78 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
           onMouseMove={handleMouseMove}
-          style={{ cursor: zoomLevel > 1 ? 'grab' : 'default' }}
         >
-          <div
-            className="absolute inset-0"
-            style={{
-              transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-              transition: 'transform 0.1s linear', // Smoother pan/zoom
-            }}
-          >
-            {/* Original Card Image (Bottom Layer) */}
-            <NextImage
-              src={originalCardImage}
-              alt="Original Lorcana Card"
-              layout="fill"
-              objectFit="contain"
-              unoptimized
-              data-ai-hint="card original"
-              priority // Prioritize loading original image
+          {isDifferenceMode ? (
+             <canvas
+              ref={differenceCanvasRef}
+              className="w-full h-full"
+              style={{
+                transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                transition: 'transform 0.1s linear',
+                imageRendering: 'pixelated', // For sharper pixels when zoomed
+              }}
             />
-
-            {/* Uploaded Card Image (Top Layer, Clipped) */}
+          ) : (
             <div
-              className="absolute inset-0 overflow-hidden" // Ensure this div doesn't affect layout beyond its bounds
-              style={{ clipPath: `inset(0 ${100 - sliderValue}% 0 0)` }}
+              className="absolute inset-0"
+              style={{
+                transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                transition: 'transform 0.1s linear',
+              }}
             >
               <NextImage
-                src={uploadedImage}
-                alt="Uploaded Lorcana Card"
+                src={originalCardImage}
+                alt="Original Lorcana Card"
                 layout="fill"
                 objectFit="contain"
-                style={uploadedImageStyle}
                 unoptimized
-                data-ai-hint="card uploaded"
+                data-ai-hint="card original"
+                priority
               />
+              <div
+                className="absolute inset-0 overflow-hidden"
+                style={{ clipPath: `inset(0 ${100 - sliderValue}% 0 0)` }}
+              >
+                <NextImage
+                  src={uploadedImage}
+                  alt="Uploaded Lorcana Card"
+                  layout="fill"
+                  objectFit="contain"
+                  style={uploadedImageStyle}
+                  unoptimized
+                  data-ai-hint="card uploaded"
+                />
+              </div>
             </div>
-          </div>
+          )}
           
-          {/* Slider Handle - ensure it's above the images */}
-          {zoomLevel === 1 && ( // Only show slider handle if not zoomed, to avoid interfering with panning
+          {!isDifferenceMode && zoomLevel === 1 && (
             <div
               className="absolute top-0 bottom-0 bg-accent w-1 cursor-ew-resize"
               style={{ left: `${sliderValue}%`, transform: 'translateX(-50%)', zIndex: 10 }}
-              // Draggable handle logic could be added here if needed
             />
           )}
         </div>
 
-        <div className="pt-2">
-          <Label htmlFor="comparison-slider" className="sr-only">Comparison Slider</Label>
-          <Slider
-            id="comparison-slider"
-            min={0}
-            max={100}
-            step={1}
-            value={[sliderValue]}
-            onValueChange={(value) => setSliderValue(value[0])}
-            className="w-full [&>span:first-child]:bg-accent"
-            aria-label="Image comparison slider"
-          />
-           <div className="flex justify-between text-xs text-muted-foreground mt-1">
-            <span>Uploaded</span>
-            <span>Original</span>
+        {!isDifferenceMode && (
+          <div className="pt-2">
+            <Label htmlFor="comparison-slider" className="sr-only">Comparison Slider</Label>
+            <Slider
+              id="comparison-slider"
+              min={0}
+              max={100}
+              step={1}
+              value={[sliderValue]}
+              onValueChange={(value) => setSliderValue(value[0])}
+              className="w-full [&>span:first-child]:bg-accent"
+              aria-label="Image comparison slider"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+              <span>Uploaded</span>
+              <span>Original</span>
+            </div>
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   );

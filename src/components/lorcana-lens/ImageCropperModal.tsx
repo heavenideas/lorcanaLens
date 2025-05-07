@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
@@ -159,3 +160,8 @@ export default function LorcanaLensPage() {
     </div>
   );
 }
+```
+  </change>
+  <change>
+    <file>src/components/lorcana-lens/ImageCropperModal.tsx</file>
+    <description>Delete
