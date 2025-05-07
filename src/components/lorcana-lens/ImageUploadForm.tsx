@@ -51,10 +51,7 @@ const ImageUploadForm: React.FC<ImageUploadFormProps> = ({ onImageUpload }) => {
     event.preventDefault();
     if (previewUrl) {
       onImageUpload(previewUrl);
-      toast({
-        title: "Image Uploaded",
-        description: "Your card image has been loaded for comparison.",
-      });
+      // Toast message is now handled in page.tsx after image processing
     } else {
        toast({
         title: "No Image Selected",

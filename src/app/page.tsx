@@ -6,7 +6,7 @@ import ImageUploadForm from '@/components/lorcana-lens/ImageUploadForm';
 import CardSearchControl from '@/components/lorcana-lens/CardSearchControl';
 import AlignmentControls, { type AlignmentSettings } from '@/components/lorcana-lens/AlignmentControls';
 import ImageComparisonView from '@/components/lorcana-lens/ImageComparisonView';
-import ImageCropperModal from '@/components/lorcana-lens/ImageCropperModal';
+// import ImageCropperModal from '@/components/lorcana-lens/ImageCropperModal'; // Removed Cropper
 import { getAllLorcanaCards, type AllCards, type LorcanaCard } from '@/services/lorcana-card';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,8 +32,7 @@ export default function LorcanaLensPage() {
   const [isLoadingCards, setIsLoadingCards] = useState(true);
   const [errorLoadingCards, setErrorLoadingCards] = useState<string | null>(null);
   
-  const [isCropping, setIsCropping] = useState(false);
-  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
+  // State for uploaded image dimensions, still needed for AlignmentControls preview
   const [uploadedImageDimensions, setUploadedImageDimensions] = useState<{width: number, height: number} | null>(null);
 
 
@@ -70,33 +69,21 @@ export default function LorcanaLensPage() {
     fetchCards();
   }, [fetchCards]);
 
-  const handleImageSelectedForUpload = (imageDataUrl: string) => {
-    setImageToCrop(imageDataUrl);
-    setIsCropping(true);
-  };
+  const handleImageUpload = (imageDataUrl: string) => {
+    setUploadedImage(imageDataUrl);
 
-  const handleCropComplete = (croppedDataUrl: string) => {
-    setUploadedImage(croppedDataUrl);
-
-    // Get dimensions of the cropped image for AlignmentControls preview
+    // Get dimensions of the uploaded image for AlignmentControls preview
     const img = new window.Image();
     img.onload = () => {
       setUploadedImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
     };
-    img.src = croppedDataUrl;
+    img.src = imageDataUrl;
     
-    setImageToCrop(null);
-    setIsCropping(false);
     setAlignment(initialAlignment); 
     toast({
-      title: "Image Cropped & Loaded",
-      description: "Your card image has been cropped and is ready for alignment.",
+      title: "Image Loaded",
+      description: "Your card image is ready for alignment.",
     });
-  };
-
-  const handleCropCancel = () => {
-    setImageToCrop(null);
-    setIsCropping(false);
   };
 
 
@@ -125,19 +112,12 @@ export default function LorcanaLensPage() {
         </p>
       </header>
 
-      {isCropping && imageToCrop && (
-        <ImageCropperModal
-          imageDataUrl={imageToCrop}
-          aspectRatio={LORCANA_CARD_ASPECT_RATIO}
-          onCropComplete={handleCropComplete}
-          onCancel={handleCropCancel}
-        />
-      )}
+      {/* Cropper Modal Removed */}
 
       <main className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Left Column: Upload and Search */}
         <div className="md:col-span-1 space-y-6">
-          <ImageUploadForm onImageUpload={handleImageSelectedForUpload} />
+          <ImageUploadForm onImageUpload={handleImageUpload} />
           
           {isLoadingCards && (
             <Card>
