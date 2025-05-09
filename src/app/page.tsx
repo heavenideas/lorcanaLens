@@ -260,6 +260,8 @@ export default function LorcanaLensPage() {
               onReset={handleResetAlignment}
               uploadedImageDimensions={uploadedImageDimensions}
               originalCardAspectRatio={LORCANA_CARD_ASPECT_RATIO}
+              uploadedImageSrc={uploadedImage}
+              originalCardImageSrc={originalCard?.images.full || null}
             />
           )}
         </div>
@@ -361,5 +363,3 @@ export default function LorcanaLensPage() {
     </div>
   );
 }
-
-    

@@ -22,22 +22,18 @@ interface AlignmentControlsProps {
   onReset: () => void;
   uploadedImageDimensions: {width: number, height: number} | null; // Natural dimensions of the (cropped) uploaded image
   originalCardAspectRatio: number; // width / height
+  uploadedImageSrc: string | null;
+  originalCardImageSrc: string | null;
 }
 
 const AlignmentPreview: React.FC<{
   alignment: AlignmentSettings;
   uploadedImageDimensions: {width: number, height: number} | null;
   originalCardAspectRatio: number;
-}> = ({ alignment, uploadedImageDimensions, originalCardAspectRatio }) => {
+  uploadedImageSrc: string | null;
+  originalCardImageSrc: string | null;
+}> = ({ alignment, uploadedImageDimensions, originalCardAspectRatio, uploadedImageSrc, originalCardImageSrc }) => {
   const previewSize = 150; // Size of the preview container in pixels
-
-  if (!uploadedImageDimensions) {
-    return (
-      <div style={{ width: previewSize, height: previewSize }} className="bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground">
-        Loading preview...
-      </div>
-    );
-  }
 
   // Calculate dimensions for the original card placeholder (target area)
   let targetWidth, targetHeight;
@@ -48,34 +44,33 @@ const AlignmentPreview: React.FC<{
     targetHeight = previewSize * 0.8;
     targetWidth = targetHeight * originalCardAspectRatio;
   }
-   // Center the target box
   const targetX = (previewSize - targetWidth) / 2;
   const targetY = (previewSize - targetHeight) / 2;
 
-
-  // Calculate dimensions for the uploaded image placeholder based on its aspect ratio
-  const uploadedAspectRatio = uploadedImageDimensions.width / uploadedImageDimensions.height;
-  let uWidth, uHeight;
-   if (uploadedAspectRatio > 1) {
-    uWidth = targetWidth; // Match target width initially
-    uHeight = uWidth / uploadedAspectRatio;
-  } else {
-    uHeight = targetHeight; // Match target height initially
-    uWidth = uHeight * uploadedAspectRatio;
+  // Calculate dimensions for the uploaded image placeholder
+  let uWidth = 0, uHeight = 0;
+  if (uploadedImageDimensions) {
+    const uploadedAspectRatio = uploadedImageDimensions.width / uploadedImageDimensions.height;
+    if (uploadedAspectRatio > 1) {
+      uWidth = targetWidth; // Match target width initially for comparable scale
+      uHeight = uWidth / uploadedAspectRatio;
+    } else {
+      uHeight = targetHeight; // Match target height initially for comparable scale
+      uWidth = uHeight * uploadedAspectRatio;
+    }
   }
-
 
   const uploadedStyle: React.CSSProperties = {
     position: 'absolute',
     width: uWidth,
     height: uHeight,
-    left: `calc(50% - ${uWidth/2}px)`, // Center before transform
-    top: `calc(50% - ${uHeight/2}px)`,  // Center before transform
-    transform: `translate(${alignment.offsetX * (previewSize/400)}px, ${alignment.offsetY * (previewSize/400)}px) scale(${alignment.scaleX}, ${alignment.scaleY}) rotate(${alignment.rotate}deg)`, // Scale down offsets for preview
+    left: `calc(50% - ${uWidth / 2}px)`, // Center before transform
+    top: `calc(50% - ${uHeight / 2}px)`,  // Center before transform
+    transform: `translate(${alignment.offsetX * (previewSize / 400)}px, ${alignment.offsetY * (previewSize / 400)}px) scale(${alignment.scaleX}, ${alignment.scaleY}) rotate(${alignment.rotate}deg)`, // Scale down offsets for preview
     transformOrigin: 'center center',
-    border: '1px dashed hsl(var(--primary))',
-    opacity: 0.7,
+    border: '1px dashed hsl(var(--primary))', // Keep border for clarity
     transition: 'transform 0.1s ease-out',
+    overflow: 'hidden', // Contain the image
   };
 
   const cornerDotStyle: React.CSSProperties = {
@@ -101,16 +96,43 @@ const AlignmentPreview: React.FC<{
           height: targetHeight,
           border: '1px solid hsl(var(--border))',
           boxSizing: 'border-box',
+          overflow: 'hidden',
         }}
-      />
-      {/* Uploaded Image Preview */}
-      <div style={uploadedStyle}>
-        {/* Corner dots for the transformed uploaded image */}
-        <div style={{ ...cornerDotStyle, top: '-2px', left: '-2px' }} />
-        <div style={{ ...cornerDotStyle, top: '-2px', right: '-2px' }} />
-        <div style={{ ...cornerDotStyle, bottom: '-2px', left: '-2px' }} />
-        <div style={{ ...cornerDotStyle, bottom: '-2px', right: '-2px' }} />
+      >
+        {originalCardImageSrc ? (
+          <img
+            src={originalCardImageSrc}
+            alt="Original Preview"
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground p-1 text-center">Original Area</div>
+        )}
       </div>
+
+      {/* Uploaded Image Preview */}
+      {uploadedImageDimensions && uWidth > 0 && uHeight > 0 ? (
+        <div style={uploadedStyle}>
+          {uploadedImageSrc ? (
+             <img
+              src={uploadedImageSrc}
+              alt="Uploaded Preview"
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-xs text-primary p-1 text-center">Uploaded Area</div>
+          )}
+          {/* Corner dots for the transformed uploaded image */}
+          <div style={{ ...cornerDotStyle, top: '-2px', left: '-2px' }} />
+          <div style={{ ...cornerDotStyle, top: '-2px', right: '-2px' }} />
+          <div style={{ ...cornerDotStyle, bottom: '-2px', left: '-2px' }} />
+          <div style={{ ...cornerDotStyle, bottom: '-2px', right: '-2px' }} />
+        </div>
+      ) : uploadedImageSrc ? ( // Show loading only if an uploaded image is expected
+        <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground animate-pulse">
+            Preparing uploaded preview...
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -121,7 +143,9 @@ const AlignmentControls: React.FC<AlignmentControlsProps> = ({
     onAlignmentChange, 
     onReset,
     uploadedImageDimensions,
-    originalCardAspectRatio
+    originalCardAspectRatio,
+    uploadedImageSrc,
+    originalCardImageSrc,
 }) => {
   const handleSliderChange = (key: keyof AlignmentSettings, value: number[]) => {
     onAlignmentChange({ ...alignment, [key]: value[0] });
@@ -200,6 +224,8 @@ const AlignmentControls: React.FC<AlignmentControlsProps> = ({
                 alignment={alignment} 
                 uploadedImageDimensions={uploadedImageDimensions}
                 originalCardAspectRatio={originalCardAspectRatio}
+                uploadedImageSrc={uploadedImageSrc}
+                originalCardImageSrc={originalCardImageSrc}
             />
         </div>
       </CardContent>
