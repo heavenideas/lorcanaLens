@@ -5,14 +5,12 @@ import { useEffect, useState, useCallback } from 'react';
 import ImageUploadForm from '@/components/lorcana-lens/ImageUploadForm';
 import CardSearchControl from '@/components/lorcana-lens/CardSearchControl';
 import AlignmentControls, { type AlignmentSettings } from '@/components/lorcana-lens/AlignmentControls';
-import ImageComparisonView, { type ImageSelection } from '@/components/lorcana-lens/ImageComparisonView';
+import ImageComparisonView from '@/components/lorcana-lens/ImageComparisonView';
 import { getAllLorcanaCards, type AllCards, type LorcanaCard } from '@/services/lorcana-card';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, Edit3, ZoomInIcon, Focus } from 'lucide-react';
+import { Loader2, RefreshCw, Edit3, ZoomInIcon, Focus, LocateFixed, LocateFixedIcon, Pointer } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-// Removed 'Image' from 'next/image' as it's no longer used for the logo here.
-// If other images still use it, it should be kept. For now, assuming only logo was 'next/image'.
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LorcanaLensLogo from '@/components/lorcana-lens/LorcanaLensLogo';
 
@@ -26,15 +24,20 @@ const initialAlignment: AlignmentSettings = {
 };
 
 const LORCANA_CARD_ASPECT_RATIO = 1468 / 2048; // width / height
-const COMPARISON_VIEW_MAX_WIDTH = 448; // from max-w-md (28rem * 16px/rem)
-const COMPARISON_VIEW_ASPECT_RATIO = 7 / 10; // from aspect-[7/10]
-const COMPARISON_VIEW_HEIGHT = COMPARISON_VIEW_MAX_WIDTH / COMPARISON_VIEW_ASPECT_RATIO;
+// These constants define the base size of the comparison view port before zoom/pan.
+// Based on max-w-md (28rem = 448px) and aspect-[7/10]
+const COMPARISON_VIEW_BASE_WIDTH = 448; 
+const COMPARISON_VIEW_BASE_HEIGHT = COMPARISON_VIEW_BASE_WIDTH / (7/10);
 
 
 export type ComparisonMode = 'full' | 'detail';
-export type SelectionTarget = 'uploaded' | 'original' | null;
+export type PointSelectionMode = 'uploaded' | 'original' | null;
 
+
+// Calculates how an image with naturalW x naturalH dimensions
+// would be displayed (object-fit: contain) within a containerW x containerH box.
 const calculateDisplayedDimensions = (naturalW: number, naturalH: number, containerW: number, containerH: number) => {
+  if (naturalW === 0 || naturalH === 0) return { dispW: 0, dispH: 0 };
   const imgAspect = naturalW / naturalH;
   const containerAspect = containerW / containerH;
   let dispW, dispH;
@@ -61,9 +64,14 @@ export default function LorcanaLensPage() {
   const [originalImageNaturalDimensions, setOriginalImageNaturalDimensions] = useState<{width: number, height: number} | null>(null);
 
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>('full');
-  const [currentSelectionTarget, setCurrentSelectionTarget] = useState<SelectionTarget>(null);
-  const [uploadedImageSelection, setUploadedImageSelection] = useState<ImageSelection | null>(null);
-  const [originalImageSelection, setOriginalImageSelection] = useState<ImageSelection | null>(null);
+  const [pointSelectionMode, setPointSelectionMode] = useState<PointSelectionMode>(null);
+  
+  // Pan and zoom are managed by ImageComparisonView internally, but page might need to react or influence them.
+  // For now, they are local to ImageComparisonView. If page needs to set them (e.g. for point centering on original),
+  // we'll need to lift that state up or provide a callback mechanism.
+  // The `handlePointSelected` now receives current panOffset and zoomLevel.
+  const [mainViewPanOffset, setMainViewPanOffset] = useState({ x: 0, y: 0 });
+  const [mainViewZoomLevel, setMainViewZoomLevel] = useState(1);
 
 
   const { toast } = useToast();
@@ -107,7 +115,6 @@ export default function LorcanaLensPage() {
     };
     img.src = imageDataUrl;
     setAlignment(initialAlignment); 
-    setUploadedImageSelection(null); // Reset selection on new image
     toast({
       title: "Image Loaded",
       description: "Your card image is ready for alignment.",
@@ -116,7 +123,6 @@ export default function LorcanaLensPage() {
 
   const handleCardSelect = (card: LorcanaCard) => {
     setOriginalCard(card);
-    setOriginalImageSelection(null); // Reset selection on new card
     if (card?.images.full) {
       const img = new window.Image();
       img.onload = () => {
@@ -134,83 +140,88 @@ export default function LorcanaLensPage() {
   
   const handleResetAlignment = () => {
     setAlignment(initialAlignment);
+    setMainViewPanOffset({ x: 0, y: 0 }); // Also reset pan when resetting alignment for simplicity
+    setMainViewZoomLevel(1); // And zoom
   };
 
-  const handleSelectionComplete = (target: 'uploaded' | 'original', selection: ImageSelection) => {
+  const handlePointSelected = (
+    target: 'uploaded' | 'original',
+    // point is normalized (0-1) click coordinates on the *image itself*
+    point: { x: number; y: number },
+    // viewDimensions are the current clientWidth/Height of the comparison container
+    viewDimensions: { width: number; height: number },
+    currentAlignment: AlignmentSettings,
+    currentPanOffset: { x: number; y: number },
+    currentZoomLevel: number
+  ) => {
     if (target === 'uploaded') {
-      setUploadedImageSelection(selection);
-    } else {
-      setOriginalImageSelection(selection);
-    }
-    setCurrentSelectionTarget(null); // End selection mode
-    toast({
-      title: "Area Selected",
-      description: `Selected area on ${target === 'uploaded' ? 'your image' : 'the original card'}.`,
-    });
-  };
+      if (!uploadedImageDimensions || !originalImageNaturalDimensions) return;
 
-  const handleAlignSelectionCenters = () => {
-    if (!uploadedImageSelection || !originalImageSelection || !uploadedImageDimensions || !originalImageNaturalDimensions) {
-      toast({
-        title: "Alignment Error",
-        description: "Please select areas on both images and ensure images are loaded.",
-        variant: "destructive",
+      // Calculate effective dimensions of the uploaded image's frame before alignment transforms
+      // This is the size NextImage gives to the uploaded image based on originalImageNaturalDimensions props
+      const s_fit_orig = Math.min(originalImageNaturalDimensions.width / uploadedImageDimensions.width, originalImageNaturalDimensions.height / uploadedImageDimensions.height);
+      const Eff_uw = uploadedImageDimensions.width * s_fit_orig;
+      const Eff_uh = uploadedImageDimensions.height * s_fit_orig;
+      
+      // Then these Eff_uw x Eff_uh are fitted into the view container (e.g., COMPARISON_VIEW_BASE_WIDTH/HEIGHT)
+      const { dispW: Disp_Eff_uw, dispH: Disp_Eff_uh } = calculateDisplayedDimensions(Eff_uw, Eff_uh, viewDimensions.width, viewDimensions.height);
+
+      const R_rad = currentAlignment.rotate * Math.PI / 180;
+      const cosR = Math.cos(R_rad);
+      const sinR = Math.sin(R_rad);
+
+      // Vector from center of uploaded image frame to the clicked point *within that frame*, scaled by current alignment scales:
+      const dx_in_frame_unrotated = (point.x - 0.5) * Disp_Eff_uw * currentAlignment.scaleX;
+      const dy_in_frame_unrotated = (point.y - 0.5) * Disp_Eff_uh * currentAlignment.scaleY;
+      
+      // Rotate this vector:
+      const v_target_x_view = dx_in_frame_unrotated * cosR - dy_in_frame_unrotated * sinR;
+      const v_target_y_view = dx_in_frame_unrotated * sinR + dy_in_frame_unrotated * cosR;
+
+      // To make this point (v_target_x_view, v_target_y_view) the new center of the view,
+      // the uploaded image's alignment offset must shift by its negative.
+      const newOffsetX = currentAlignment.offsetX - v_target_x_view;
+      const newOffsetY = currentAlignment.offsetY - v_target_y_view;
+      
+      setAlignment(prev => ({
+        ...prev,
+        offsetX: parseFloat(newOffsetX.toFixed(2)),
+        offsetY: parseFloat(newOffsetY.toFixed(2)),
+      }));
+      toast({ title: "Uploaded Image Centered", description: "Adjusted alignment to center on your selected point." });
+
+    } else if (target === 'original') {
+      if (!originalImageNaturalDimensions) return;
+
+      // Calculate displayed dimensions of original image frame in the view.
+      const { dispW: Disp_N_ow, dispH: Disp_N_oh } = calculateDisplayedDimensions(
+        originalImageNaturalDimensions.width,
+        originalImageNaturalDimensions.height,
+        viewDimensions.width, // Use actual current view dimensions
+        viewDimensions.height
+      );
+
+      // Vector from center of original image frame to the clicked point *within that frame*, in view pixels (at zoom=1):
+      const dx_in_frame_orig_at_zoom1 = (point.x - 0.5) * Disp_N_ow;
+      const dy_in_frame_orig_at_zoom1 = (point.y - 0.5) * Disp_N_oh;
+      
+      // This point's current position in the panned & zoomed view relative to view center IS what we want to make (0,0)
+      // The pan offset needs to be set to counteract this point's current panned&zoomed position.
+      // The point (dx_in_frame_orig_at_zoom1, dy_in_frame_orig_at_zoom1) is where the click is, relative to original image's center, at zoom 1.
+      // Its position in the *current panned coordinate system of the view*, relative to the view's center,
+      // (if panOffset was 0,0) would be (dx_in_frame_orig_at_zoom1 * currentZoomLevel, dy_in_frame_orig_at_zoom1 * currentZoomLevel).
+      // We want new pan offsets (newPanX, newPanY) such that this point becomes (0,0) in the view.
+      // newPanX + (dx_in_frame_orig_at_zoom1 * currentZoomLevel) = 0
+      const newPanX = -dx_in_frame_orig_at_zoom1 * currentZoomLevel;
+      const newPanY = -dy_in_frame_orig_at_zoom1 * currentZoomLevel;
+
+      setMainViewPanOffset({
+        x: parseFloat(newPanX.toFixed(2)),
+        y: parseFloat(newPanY.toFixed(2)),
       });
-      return;
+      toast({ title: "Original Image Centered", description: "Adjusted view pan to center on the selected point." });
     }
-
-    const N_ow = originalImageNaturalDimensions.width;
-    const N_oh = originalImageNaturalDimensions.height;
-    const N_uw = uploadedImageDimensions.width;
-    const N_uh = uploadedImageDimensions.height;
-
-    // Dimensions of images as displayed by NextImage within the comparison view container due to object-fit:contain
-    const { dispW: Disp_N_ow, dispH: Disp_N_oh } = calculateDisplayedDimensions(N_ow, N_oh, COMPARISON_VIEW_MAX_WIDTH, COMPARISON_VIEW_HEIGHT);
-
-    const origSelX_norm = originalImageSelection.x + originalImageSelection.width / 2;
-    const origSelY_norm = originalImageSelection.y + originalImageSelection.height / 2;
-    // Vector from original image's center to its selection's center, in view pixels
-    const delta_ox_view = (origSelX_norm - 0.5) * Disp_N_ow;
-    const delta_oy_view = (origSelY_norm - 0.5) * Disp_N_oh;
-    
-    // For uploaded image, NextImage base props are original's natural dimensions.
-    // This means NextImage internally scales uploaded image to fit within N_ow x N_oh box.
-    const s_upld_internal_fit_to_orig_dims = Math.min(N_ow / N_uw, N_oh / N_uh);
-    const I_uw_eff = N_uw * s_upld_internal_fit_to_orig_dims; // Effective "natural" width for NextImage's layout
-    const I_uh_eff = N_uh * s_upld_internal_fit_to_orig_dims; // Effective "natural" height
-
-    // Then this I_uw_eff x I_uh_eff box is scaled by NextImage (layout="fill") to fit COMPARISON_VIEW_MAX_WIDTH x COMPARISON_VIEW_HEIGHT
-    const { dispW: Disp_I_uw, dispH: Disp_I_uh } = calculateDisplayedDimensions(I_uw_eff, I_uh_eff, COMPARISON_VIEW_MAX_WIDTH, COMPARISON_VIEW_HEIGHT);
-    // Disp_I_uw and Disp_I_uh are the displayed sizes if alignment.scaleX/Y = 1
-
-    const upldSelX_norm = uploadedImageSelection.x + uploadedImageSelection.width / 2;
-    const upldSelY_norm = uploadedImageSelection.y + uploadedImageSelection.height / 2;
-
-    const R_rad = alignment.rotate * Math.PI / 180;
-    const cosR = Math.cos(R_rad);
-    const sinR = Math.sin(R_rad);
-
-    // Vector from uploaded image's center to its selection's center,
-    // in view pixels, after alignment.scaleX/Y and alignment.rotate
-    const v_dx_unrotated = (upldSelX_norm - 0.5) * Disp_I_uw * alignment.scaleX;
-    const v_dy_unrotated = (upldSelY_norm - 0.5) * Disp_I_uh * alignment.scaleY;
-
-    const V_x = v_dx_unrotated * cosR - v_dy_unrotated * sinR;
-    const V_y = v_dx_unrotated * sinR + v_dy_unrotated * cosR;
-
-    const newOffsetX = delta_ox_view - V_x;
-    const newOffsetY = delta_oy_view - V_y;
-
-    setAlignment(prev => ({
-      ...prev,
-      offsetX: parseFloat(newOffsetX.toFixed(2)), // Keep precision reasonable
-      offsetY: parseFloat(newOffsetY.toFixed(2)),
-    }));
-
-    toast({
-      title: "Centers Aligned",
-      description: "The selection centers have been mathematically aligned. Adjust further if needed.",
-    });
+    setPointSelectionMode(null); // Exit point selection mode
   };
 
 
@@ -278,63 +289,45 @@ export default function LorcanaLensPage() {
                 originalCardImage={originalCard?.images.full || null}
                 alignment={alignment}
                 comparisonMode="full"
-                currentSelectionTarget={null}
-                uploadedImageSelection={null}
-                originalImageSelection={null}
-                onSelectionComplete={() => {}}
+                pointSelectionMode={null} // No point selection in full mode
+                onPointSelected={() => {}} // No point selection in full mode
                 uploadedImageNaturalDimensions={uploadedImageDimensions}
                 originalImageNaturalDimensions={originalImageNaturalDimensions}
+                panOffset={mainViewPanOffset}
+                zoomLevel={mainViewZoomLevel}
+                onPanOffsetChange={setMainViewPanOffset}
+                onZoomLevelChange={setMainViewZoomLevel}
               />
             </TabsContent>
             <TabsContent value="detail">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center"><ZoomInIcon className="mr-2 h-6 w-6" />Detail Comparison Setup</CardTitle>
-                  <CardDescription>Select areas on both images to focus your comparison. Use alignment controls to match them, or try auto-aligning centers.</CardDescription>
+                  <CardDescription>Click a button below, then click a point on the corresponding image to center the view on that point. Use alignment controls to fine-tune.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Button 
-                      variant={currentSelectionTarget === 'uploaded' ? "default" : "outline"}
-                      onClick={() => setCurrentSelectionTarget('uploaded')}
-                      disabled={!uploadedImage || (!!uploadedImageSelection && currentSelectionTarget !== 'uploaded')}
+                      variant={pointSelectionMode === 'uploaded' ? "default" : "outline"}
+                      onClick={() => setPointSelectionMode('uploaded')}
+                      disabled={!uploadedImage}
                     >
-                      <Edit3 className="mr-2 h-4 w-4"/> 
-                      {uploadedImageSelection ? "Reselect on Your Image" : "Select on Your Image"}
+                      <Pointer className="mr-2 h-4 w-4"/> 
+                      Set Center on Your Image
                     </Button>
                     <Button 
-                      variant={currentSelectionTarget === 'original' ? "default" : "outline"}
-                      onClick={() => setCurrentSelectionTarget('original')}
-                      disabled={!originalCard || (!!originalImageSelection && currentSelectionTarget !== 'original')}
+                      variant={pointSelectionMode === 'original' ? "default" : "outline"}
+                      onClick={() => setPointSelectionMode('original')}
+                      disabled={!originalCard}
                     >
-                      <Edit3 className="mr-2 h-4 w-4"/> 
-                      {originalImageSelection ? "Reselect on Original" : "Select on Original"}
+                      <Pointer className="mr-2 h-4 w-4"/> 
+                      Set Center on Original
                     </Button>
                   </div>
-                  {uploadedImageSelection && originalImageSelection && (
-                    <Button
-                      onClick={handleAlignSelectionCenters}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      <Focus className="mr-2 h-4 w-4" /> Align Selection Centers
-                    </Button>
-                  )}
-                  {currentSelectionTarget && (
+                  
+                  {pointSelectionMode && (
                     <p className="text-sm text-accent text-center animate-pulse">
-                      Click and drag on the image below to select the area for {currentSelectionTarget === 'uploaded' ? 'your image' : 'the original card'}.
-                    </p>
-                  )}
-                  {uploadedImageSelection && (
-                    <p className="text-xs text-muted-foreground">
-                      Your Image Selection: X: {uploadedImageSelection.x.toFixed(2)}, Y: {uploadedImageSelection.y.toFixed(2)}, W: {uploadedImageSelection.width.toFixed(2)}, H: {uploadedImageSelection.height.toFixed(2)}
-                       <Button variant="link" size="sm" className="p-0 h-auto ml-2" onClick={() => setUploadedImageSelection(null)}>Clear</Button>
-                    </p>
-                  )}
-                  {originalImageSelection && (
-                    <p className="text-xs text-muted-foreground">
-                      Original Card Selection: X: {originalImageSelection.x.toFixed(2)}, Y: {originalImageSelection.y.toFixed(2)}, W: {originalImageSelection.width.toFixed(2)}, H: {originalImageSelection.height.toFixed(2)}
-                      <Button variant="link" size="sm" className="p-0 h-auto ml-2" onClick={() => setOriginalImageSelection(null)}>Clear</Button>
+                      Click on the {pointSelectionMode === 'uploaded' ? 'uploaded (left/top)' : 'original (right/bottom)'} image below to select the new center point.
                     </p>
                   )}
                 </CardContent>
@@ -344,12 +337,14 @@ export default function LorcanaLensPage() {
                 originalCardImage={originalCard?.images.full || null}
                 alignment={alignment}
                 comparisonMode="detail"
-                currentSelectionTarget={currentSelectionTarget}
-                uploadedImageSelection={uploadedImageSelection}
-                originalImageSelection={originalImageSelection}
-                onSelectionComplete={handleSelectionComplete}
+                pointSelectionMode={pointSelectionMode}
+                onPointSelected={handlePointSelected}
                 uploadedImageNaturalDimensions={uploadedImageDimensions}
                 originalImageNaturalDimensions={originalImageNaturalDimensions}
+                panOffset={mainViewPanOffset}
+                zoomLevel={mainViewZoomLevel}
+                onPanOffsetChange={setMainViewPanOffset}
+                onZoomLevelChange={setMainViewZoomLevel}
               />
             </TabsContent>
           </Tabs>
@@ -363,3 +358,5 @@ export default function LorcanaLensPage() {
     </div>
   );
 }
+
+    
