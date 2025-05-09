@@ -11,8 +11,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Loader2, RefreshCw, Edit3, ZoomInIcon, Focus } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import Image from 'next/image';
+// Removed 'Image' from 'next/image' as it's no longer used for the logo here.
+// If other images still use it, it should be kept. For now, assuming only logo was 'next/image'.
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import LorcanaLensLogo from '@/components/lorcana-lens/LorcanaLensLogo';
+
 
 const initialAlignment: AlignmentSettings = {
   scaleX: 1,
@@ -215,7 +218,7 @@ export default function LorcanaLensPage() {
     <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
       <header className="mb-8 text-center">
          <div className="flex items-center justify-center mb-2">
-          <Image data-ai-hint="logo app" src="https://picsum.photos/seed/lorcalenslogo/64/64" alt="Lorcana Lens Logo" width={64} height={64} className="rounded-lg mr-4" />
+          <LorcanaLensLogo className="w-16 h-16 rounded-lg mr-4" />
           <h1 className="text-4xl font-bold text-primary">Lorcana Lens</h1>
         </div>
         <p className="text-muted-foreground text-lg">
@@ -358,3 +361,5 @@ export default function LorcanaLensPage() {
     </div>
   );
 }
+
+    
