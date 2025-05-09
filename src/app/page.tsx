@@ -5,13 +5,14 @@ import { useEffect, useState, useCallback } from 'react';
 import ImageUploadForm from '@/components/lorcana-lens/ImageUploadForm';
 import CardSearchControl from '@/components/lorcana-lens/CardSearchControl';
 import AlignmentControls, { type AlignmentSettings } from '@/components/lorcana-lens/AlignmentControls';
-import ImageComparisonView from '@/components/lorcana-lens/ImageComparisonView';
+import ImageComparisonView, { type ImageSelection } from '@/components/lorcana-lens/ImageComparisonView';
 import { getAllLorcanaCards, type AllCards, type LorcanaCard } from '@/services/lorcana-card';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw, Edit3, ZoomInIcon } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const initialAlignment: AlignmentSettings = {
   scaleX: 1,
@@ -21,7 +22,10 @@ const initialAlignment: AlignmentSettings = {
   rotate: 0,
 };
 
-const LORCANA_CARD_ASPECT_RATIO = 1468 / 2048;
+const LORCANA_CARD_ASPECT_RATIO = 1468 / 2048; // width / height
+
+export type ComparisonMode = 'full' | 'detail';
+export type SelectionTarget = 'uploaded' | 'original' | null;
 
 export default function LorcanaLensPage() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
@@ -32,6 +36,13 @@ export default function LorcanaLensPage() {
   const [errorLoadingCards, setErrorLoadingCards] = useState<string | null>(null);
   
   const [uploadedImageDimensions, setUploadedImageDimensions] = useState<{width: number, height: number} | null>(null);
+  const [originalImageNaturalDimensions, setOriginalImageNaturalDimensions] = useState<{width: number, height: number} | null>(null);
+
+  const [comparisonMode, setComparisonMode] = useState<ComparisonMode>('full');
+  const [currentSelectionTarget, setCurrentSelectionTarget] = useState<SelectionTarget>(null);
+  const [uploadedImageSelection, setUploadedImageSelection] = useState<ImageSelection | null>(null);
+  const [originalImageSelection, setOriginalImageSelection] = useState<ImageSelection | null>(null);
+
 
   const { toast } = useToast();
 
@@ -68,23 +79,31 @@ export default function LorcanaLensPage() {
 
   const handleImageUpload = (imageDataUrl: string) => {
     setUploadedImage(imageDataUrl);
-
     const img = new window.Image();
     img.onload = () => {
       setUploadedImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
     };
     img.src = imageDataUrl;
-    
     setAlignment(initialAlignment); 
+    setUploadedImageSelection(null); // Reset selection on new image
     toast({
       title: "Image Loaded",
       description: "Your card image is ready for alignment.",
     });
   };
 
-
   const handleCardSelect = (card: LorcanaCard) => {
     setOriginalCard(card);
+    setOriginalImageSelection(null); // Reset selection on new card
+    if (card?.images.full) {
+      const img = new window.Image();
+      img.onload = () => {
+        setOriginalImageNaturalDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+      };
+      img.src = card.images.full;
+    } else {
+      setOriginalImageNaturalDimensions(null);
+    }
   };
 
   const handleAlignmentChange = (newAlignment: AlignmentSettings) => {
@@ -95,6 +114,18 @@ export default function LorcanaLensPage() {
     setAlignment(initialAlignment);
   };
 
+  const handleSelectionComplete = (target: 'uploaded' | 'original', selection: ImageSelection) => {
+    if (target === 'uploaded') {
+      setUploadedImageSelection(selection);
+    } else {
+      setOriginalImageSelection(selection);
+    }
+    setCurrentSelectionTarget(null); // End selection mode
+    toast({
+      title: "Area Selected",
+      description: `Selected area on ${target === 'uploaded' ? 'your image' : 'the original card'}.`,
+    });
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
@@ -110,7 +141,7 @@ export default function LorcanaLensPage() {
 
       <main className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-1 space-y-6">
-          <ImageUploadForm onImageUpload={handleImageUpload} />
+          <ImageUploadForm onImageUpload={handleImageUpload} currentImage={uploadedImage} />
           
           {isLoadingCards && (
             <Card>
@@ -134,11 +165,9 @@ export default function LorcanaLensPage() {
           {!isLoadingCards && !errorLoadingCards && allCardsData && (
             <CardSearchControl allCardsData={allCardsData} onCardSelect={handleCardSelect} selectedOriginalCard={originalCard} />
           )}
-        </div>
 
-        <div className="md:col-span-2 space-y-6">
           {uploadedImage && originalCard && (
-            <AlignmentControls 
+             <AlignmentControls 
               alignment={alignment} 
               onAlignmentChange={handleAlignmentChange} 
               onReset={handleResetAlignment}
@@ -146,11 +175,87 @@ export default function LorcanaLensPage() {
               originalCardAspectRatio={LORCANA_CARD_ASPECT_RATIO}
             />
           )}
-          <ImageComparisonView
-            uploadedImage={uploadedImage}
-            originalCardImage={originalCard?.images.full || null}
-            alignment={alignment}
-          />
+        </div>
+
+        <div className="md:col-span-2 space-y-6">
+          <Tabs value={comparisonMode} onValueChange={(value) => setComparisonMode(value as ComparisonMode)} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="full">Full Comparison</TabsTrigger>
+              <TabsTrigger value="detail">Detail Comparison</TabsTrigger>
+            </TabsList>
+            <TabsContent value="full">
+              <ImageComparisonView
+                uploadedImage={uploadedImage}
+                originalCardImage={originalCard?.images.full || null}
+                alignment={alignment}
+                comparisonMode="full"
+                // Pass nulls for detail-specific props or handle in component
+                currentSelectionTarget={null}
+                uploadedImageSelection={null}
+                originalImageSelection={null}
+                onSelectionComplete={() => {}}
+                uploadedImageNaturalDimensions={uploadedImageDimensions}
+                originalImageNaturalDimensions={originalImageNaturalDimensions}
+              />
+            </TabsContent>
+            <TabsContent value="detail">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center"><ZoomInIcon className="mr-2 h-6 w-6" />Detail Comparison Setup</CardTitle>
+                  <CardDescription>Select areas on both images to focus your comparison. Use alignment controls to match them.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <Button 
+                      variant={currentSelectionTarget === 'uploaded' ? "default" : "outline"}
+                      onClick={() => setCurrentSelectionTarget('uploaded')}
+                      disabled={!uploadedImage || (!!uploadedImageSelection && currentSelectionTarget !== 'uploaded')}
+                    >
+                      <Edit3 className="mr-2 h-4 w-4"/> 
+                      {uploadedImageSelection ? "Reselect on Your Image" : "Select on Your Image"}
+                    </Button>
+                    <Button 
+                      variant={currentSelectionTarget === 'original' ? "default" : "outline"}
+                      onClick={() => setCurrentSelectionTarget('original')}
+                      disabled={!originalCard || (!!originalImageSelection && currentSelectionTarget !== 'original')}
+                    >
+                      <Edit3 className="mr-2 h-4 w-4"/> 
+                      {originalImageSelection ? "Reselect on Original" : "Select on Original"}
+                    </Button>
+                  </div>
+                  {currentSelectionTarget && (
+                    <p className="text-sm text-accent text-center animate-pulse">
+                      Click and drag on the image below to select the area for {currentSelectionTarget === 'uploaded' ? 'your image' : 'the original card'}.
+                    </p>
+                  )}
+                  {uploadedImageSelection && (
+                    <p className="text-xs text-muted-foreground">
+                      Your Image Selection: X: {uploadedImageSelection.x.toFixed(2)}, Y: {uploadedImageSelection.y.toFixed(2)}, W: {uploadedImageSelection.width.toFixed(2)}, H: {uploadedImageSelection.height.toFixed(2)}
+                       <Button variant="link" size="sm" className="p-0 h-auto ml-2" onClick={() => setUploadedImageSelection(null)}>Clear</Button>
+                    </p>
+                  )}
+                  {originalImageSelection && (
+                    <p className="text-xs text-muted-foreground">
+                      Original Card Selection: X: {originalImageSelection.x.toFixed(2)}, Y: {originalImageSelection.y.toFixed(2)}, W: {originalImageSelection.width.toFixed(2)}, H: {originalImageSelection.height.toFixed(2)}
+                      <Button variant="link" size="sm" className="p-0 h-auto ml-2" onClick={() => setOriginalImageSelection(null)}>Clear</Button>
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+              <ImageComparisonView
+                uploadedImage={uploadedImage}
+                originalCardImage={originalCard?.images.full || null}
+                alignment={alignment}
+                comparisonMode="detail"
+                currentSelectionTarget={currentSelectionTarget}
+                uploadedImageSelection={uploadedImageSelection}
+                originalImageSelection={originalImageSelection}
+                onSelectionComplete={handleSelectionComplete}
+                uploadedImageNaturalDimensions={uploadedImageDimensions}
+                originalImageNaturalDimensions={originalImageNaturalDimensions}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       </main>
 
@@ -161,3 +266,5 @@ export default function LorcanaLensPage() {
     </div>
   );
 }
+
+    
