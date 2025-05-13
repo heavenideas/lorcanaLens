@@ -1,4 +1,3 @@
-
 'use client';
 
 import type React from 'react';
@@ -7,7 +6,7 @@ import NextImage from 'next/image';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ZoomIn, ZoomOut, Search, Maximize, Minimize, Wand2, LayersIcon } from 'lucide-react';
+import { ZoomIn, ZoomOut, Search, Maximize, Minimize, Wand2, LayersIcon, ImageOff as ImageIcon } from 'lucide-react'; // Added ImageIcon
 import type { AlignmentSettings } from './AlignmentControls';
 import { Label } from '@/components/ui/label';
 import type { ComparisonMode, PointSelectionMode } from '@/app/page';
@@ -50,7 +49,6 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
   onZoomLevelChange,
 }) => {
   const [sliderValue, setSliderValue] = useState(50);
-  // Local pan/zoom for full view, props for detail view
   const [localPanOffset, setLocalPanOffset] = useState({ x: 0, y: 0 });
   const [localZoomLevel, setLocalZoomLevel] = useState(1);
   
@@ -70,10 +68,14 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
   const [isPotentialClick, setIsPotentialClick] = useState(false);
   const mouseDownCoordsRef = useRef<{x: number, y: number} | null>(null);
 
-
-  // Refs for image elements to get their rendered dimensions
   const originalImageRef = useRef<HTMLImageElement>(null);
   const uploadedImageRef = useRef<HTMLImageElement>(null);
+
+  const [originalImageError, setOriginalImageError] = useState(false);
+
+  useEffect(() => {
+    setOriginalImageError(false); // Reset error when originalCardImage changes
+  }, [originalCardImage]);
 
 
   const handleZoomIn = () => setCurrentZoomLevel(prev => Math.min(prev * 1.2, 5));
@@ -91,12 +93,10 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
     const imgRect = imgElement.getBoundingClientRect();
     
     return {
-      // On-screen, panned, zoomed, transformed position and size, relative to container top-left
       screenX: imgRect.left - containerRect.left,
       screenY: imgRect.top - containerRect.top,
       screenWidth: imgRect.width,
       screenHeight: imgRect.height,
-      // Natural dimensions for normalization reference (though not directly used for inverse transform here)
       naturalWidth: naturalDimensions.width,
       naturalHeight: naturalDimensions.height,
     };
@@ -111,7 +111,6 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
       return; 
     }
     
-    // Allow panning if zoomed or already panned
     if (currentZoomLevel > 1 || (currentPanOffset.x !== 0 || currentPanOffset.y !== 0)) {
       setIsPanning(true);
       setPanStart({ x: e.clientX - currentPanOffset.x, y: e.clientY - currentPanOffset.y });
@@ -124,7 +123,7 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
       const dx = Math.abs(e.clientX - mouseDownCoordsRef.current.x);
       const dy = Math.abs(e.clientY - mouseDownCoordsRef.current.y);
 
-      if (dx < 5 && dy < 5) { // It's a click
+      if (dx < 5 && dy < 5) { 
         const containerRect = comparisonContainerRef.current.getBoundingClientRect();
         const view_click_x = e.clientX - containerRect.left;
         const view_click_y = e.clientY - containerRect.top;
@@ -135,16 +134,12 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
         const imgDetails = getRenderedImageDetails(targetImageRef, targetNaturalDimensions);
 
         if (imgDetails && imgDetails.screenWidth > 0 && imgDetails.screenHeight > 0) {
-          // Calculate normalized click coordinates on the image itself
-          // (view_click_x, view_click_y) are relative to container.
-          // imgDetails.screenX/Y are relative to container.
           const click_on_img_x = view_click_x - imgDetails.screenX;
           const click_on_img_y = view_click_y - imgDetails.screenY;
 
           const norm_x = click_on_img_x / imgDetails.screenWidth;
           const norm_y = click_on_img_y / imgDetails.screenHeight;
           
-          // Ensure normalized coordinates are within [0,1]
           const clamped_norm_x = Math.max(0, Math.min(1, norm_x));
           const clamped_norm_y = Math.max(0, Math.min(1, norm_y));
 
@@ -153,9 +148,9 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
               pointSelectionMode,
               { x: clamped_norm_x, y: clamped_norm_y },
               { width: comparisonContainerRef.current.clientWidth, height: comparisonContainerRef.current.clientHeight },
-              alignment, // pass current alignment
-              currentPanOffset, // pass current panOffset
-              currentZoomLevel // pass current zoomLevel
+              alignment, 
+              currentPanOffset, 
+              currentZoomLevel 
             );
           }
         }
@@ -177,11 +172,9 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
     if (isPotentialClick && mouseDownCoordsRef.current) {
         const dx = Math.abs(e.clientX - mouseDownCoordsRef.current.x);
         const dy = Math.abs(e.clientY - mouseDownCoordsRef.current.y);
-        if (dx >= 5 || dy >= 5) { // Moved too far, not a click
+        if (dx >= 5 || dy >= 5) { 
             setIsPotentialClick(false);
-             // If it was meant to be a pan, initiate pan now
-            if (pointSelectionMode) { // if we were in point selection mode, but dragged, cancel point selection for this action
-                // Potentially do nothing or allow pan if conditions met. For now, just cancel click.
+            if (pointSelectionMode) { 
             } else if (currentZoomLevel > 1 || (currentPanOffset.x !== 0 || currentPanOffset.y !== 0)) {
                 setIsPanning(true);
                 setPanStart({ x: e.clientX - currentPanOffset.x, y: e.clientY - currentPanOffset.y });
@@ -189,7 +182,6 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
             }
         }
     }
-
 
     if (isPanning && comparisonContainerRef.current) {
       const newX = e.clientX - panStart.x;
@@ -201,7 +193,7 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
   useEffect(() => {
     const el = comparisonContainerRef.current;
     const onMouseLeave = (e: MouseEvent) => {
-      if (isPotentialClick) { // If mouse leaves during potential click, treat as mouse up
+      if (isPotentialClick) { 
          handleMouseUp(e as unknown as React.MouseEvent<HTMLDivElement>);
       } else if (isPanning) {
          setIsPanning(false);
@@ -239,9 +231,20 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
     const originalImg = new window.Image();
     const uploadedImg = new window.Image();
     let originalLoaded = false, uploadedLoaded = false;
+    let originalError = false, uploadedError = false;
 
     const draw = () => {
-      if (!originalLoaded || !uploadedLoaded || !canvas.parentElement) return;
+      if (!canvas.parentElement) return;
+      if (originalError || uploadedError) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.font = "16px Arial";
+        ctx.fillStyle = "hsl(var(--destructive-foreground))";
+        ctx.textAlign = "center";
+        ctx.fillText("Error loading images for difference mode.", canvas.width / (2 * (window.devicePixelRatio || 1)), canvas.height / (2 * (window.devicePixelRatio || 1)));
+        return;
+      }
+      if (!originalLoaded || !uploadedLoaded) return;
+
 
       const container = canvas.parentElement;
       const dpr = window.devicePixelRatio || 1;
@@ -293,8 +296,14 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
 
     originalImg.onload = () => { originalLoaded = true; draw(); };
     uploadedImg.onload = () => { uploadedLoaded = true; draw(); };
-    originalImg.onerror = () => console.error("Original image failed to load for difference.");
-    uploadedImg.onerror = () => console.error("Uploaded image failed to load for difference.");
+    originalImg.onerror = () => { 
+      console.error("Original image failed to load for difference.");
+      originalError = true; draw();
+    };
+    uploadedImg.onerror = () => { 
+      console.error("Uploaded image failed to load for difference.");
+      uploadedError = true; draw();
+    };
     
     originalImg.src = originalCardImage; 
     uploadedImg.src = uploadedImage;
@@ -335,7 +344,8 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
   const imageContainerStyle: React.CSSProperties = {
     position: 'absolute',
     inset: 0,
-    transform: `scale(${currentZoomLevel}) translate(${currentPanOffset.x}px, ${currentPanOffset.y}px)`,
+    transform: `scale(${currentZoomLevel}) translate(${currentPanOffset.x / currentZoomLevel}px, ${currentPanOffset.y / currentZoomLevel}px)`,
+    transformOrigin: 'top left', // Panning works relative to top-left now
     transition: isPanning ? 'none' : 'transform 0.1s linear', 
   };
   
@@ -382,7 +392,8 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
               ref={differenceCanvasRef}
               className="w-full h-full"
               style={{
-                transform: `scale(${currentZoomLevel}) translate(${currentPanOffset.x}px, ${currentPanOffset.y}px)`,
+                transform: `scale(${currentZoomLevel}) translate(${currentPanOffset.x / currentZoomLevel}px, ${currentPanOffset.y / currentZoomLevel}px)`,
+                transformOrigin: 'top left',
                 transition: isPanning ? 'none' : 'transform 0.1s linear',
                 imageRendering: 'pixelated', 
               }}
@@ -394,36 +405,46 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
             >
               {/* Original Image */}
               <div className="absolute inset-0">
-                <NextImage
-                  ref={originalImageRef}
-                  src={originalCardImage}
-                  alt="Original Lorcana Card"
-                  layout="fill"
-                  objectFit="contain"
-                  unoptimized
-                  data-ai-hint="card original"
-                  priority
-                />
+                {originalImageError ? (
+                  <div className="w-full h-full flex items-center justify-center bg-card" title="Original image not available">
+                    <ImageIcon className="w-16 h-16 text-muted-foreground" />
+                  </div>
+                ) : (
+                  <NextImage
+                    ref={originalImageRef}
+                    src={originalCardImage}
+                    alt="Original Lorcana Card"
+                    layout="fill"
+                    objectFit="contain"
+                    unoptimized
+                    data-ai-hint="card original"
+                    priority
+                    onError={() => setOriginalImageError(true)}
+                  />
+                )}
               </div>
               
               {/* Uploaded Image (clipped by slider) */}
-              <div
-                className="absolute inset-0 overflow-hidden"
-                style={{ clipPath: `inset(0 ${100 - sliderValue}% 0 0)` }}
-              >
-                <div className="absolute inset-0"> 
-                   <NextImage
-                      ref={uploadedImageRef}
-                      src={uploadedImage}
-                      alt="Uploaded Lorcana Card"
-                      style={uploadedImageStyle} 
-                      width={originalImageNaturalDimensions?.width || 500} 
-                      height={originalImageNaturalDimensions?.height || 700}
-                      unoptimized
-                      data-ai-hint="card uploaded"
-                    />
+              {!originalImageError && uploadedImage && ( // Only show uploaded if original isn't in error state (or adjust logic as needed)
+                <div
+                  className="absolute inset-0 overflow-hidden"
+                  style={{ clipPath: `inset(0 ${100 - sliderValue}% 0 0)` }}
+                >
+                  <div className="absolute inset-0"> 
+                    <NextImage
+                        ref={uploadedImageRef}
+                        src={uploadedImage}
+                        alt="Uploaded Lorcana Card"
+                        style={uploadedImageStyle} 
+                        width={originalImageNaturalDimensions?.width || 500} 
+                        height={originalImageNaturalDimensions?.height || 700}
+                        unoptimized
+                        data-ai-hint="card uploaded"
+                        // No onError for uploadedImage as it's a data URL, less likely to fail this way
+                      />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
           
@@ -460,5 +481,3 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
 };
 
 export default ImageComparisonView;
-
-    

@@ -1,11 +1,11 @@
-
 'use client';
 
 import type React from 'react';
+import { useState, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Move, Scaling, RotateCcw, Eye } from 'lucide-react';
+import { Move, Scaling, RotateCcw, Eye, ImageOff as ImageIcon } from 'lucide-react'; // Added ImageIcon
 import { Button } from '../ui/button';
 
 export interface AlignmentSettings {
@@ -20,8 +20,8 @@ interface AlignmentControlsProps {
   alignment: AlignmentSettings;
   onAlignmentChange: (settings: AlignmentSettings) => void;
   onReset: () => void;
-  uploadedImageDimensions: {width: number, height: number} | null; // Natural dimensions of the (cropped) uploaded image
-  originalCardAspectRatio: number; // width / height
+  uploadedImageDimensions: {width: number, height: number} | null; 
+  originalCardAspectRatio: number; 
   uploadedImageSrc: string | null;
   originalCardImageSrc: string | null;
 }
@@ -33,29 +33,34 @@ const AlignmentPreview: React.FC<{
   uploadedImageSrc: string | null;
   originalCardImageSrc: string | null;
 }> = ({ alignment, uploadedImageDimensions, originalCardAspectRatio, uploadedImageSrc, originalCardImageSrc }) => {
-  const previewSize = 150; // Size of the preview container in pixels
+  const previewSize = 150; 
 
-  // Calculate dimensions for the original card placeholder (target area)
+  const [originalPreviewError, setOriginalPreviewError] = useState(false);
+  const [uploadedPreviewError, setUploadedPreviewError] = useState(false);
+
+  useEffect(() => { setOriginalPreviewError(false); }, [originalCardImageSrc]);
+  useEffect(() => { setUploadedPreviewError(false); }, [uploadedImageSrc]);
+
+
   let targetWidth, targetHeight;
-  if (originalCardAspectRatio > 1) { // Wider than tall
+  if (originalCardAspectRatio > 1) { 
     targetWidth = previewSize * 0.8;
     targetHeight = targetWidth / originalCardAspectRatio;
-  } else { // Taller than wide or square
+  } else { 
     targetHeight = previewSize * 0.8;
     targetWidth = targetHeight * originalCardAspectRatio;
   }
   const targetX = (previewSize - targetWidth) / 2;
   const targetY = (previewSize - targetHeight) / 2;
 
-  // Calculate dimensions for the uploaded image placeholder
   let uWidth = 0, uHeight = 0;
   if (uploadedImageDimensions) {
     const uploadedAspectRatio = uploadedImageDimensions.width / uploadedImageDimensions.height;
     if (uploadedAspectRatio > 1) {
-      uWidth = targetWidth; // Match target width initially for comparable scale
+      uWidth = targetWidth; 
       uHeight = uWidth / uploadedAspectRatio;
     } else {
-      uHeight = targetHeight; // Match target height initially for comparable scale
+      uHeight = targetHeight; 
       uWidth = uHeight * uploadedAspectRatio;
     }
   }
@@ -64,13 +69,13 @@ const AlignmentPreview: React.FC<{
     position: 'absolute',
     width: uWidth,
     height: uHeight,
-    left: `calc(50% - ${uWidth / 2}px)`, // Center before transform
-    top: `calc(50% - ${uHeight / 2}px)`,  // Center before transform
-    transform: `translate(${alignment.offsetX * (previewSize / 400)}px, ${alignment.offsetY * (previewSize / 400)}px) scale(${alignment.scaleX}, ${alignment.scaleY}) rotate(${alignment.rotate}deg)`, // Scale down offsets for preview
+    left: `calc(50% - ${uWidth / 2}px)`, 
+    top: `calc(50% - ${uHeight / 2}px)`,  
+    transform: `translate(${alignment.offsetX * (previewSize / 400)}px, ${alignment.offsetY * (previewSize / 400)}px) scale(${alignment.scaleX}, ${alignment.scaleY}) rotate(${alignment.rotate}deg)`, 
     transformOrigin: 'center center',
-    border: '1px dashed hsl(var(--primary))', // Keep border for clarity
+    border: '1px dashed hsl(var(--primary))', 
     transition: 'transform 0.1s ease-out',
-    overflow: 'hidden', // Contain the image
+    overflow: 'hidden', 
   };
 
   const cornerDotStyle: React.CSSProperties = {
@@ -80,13 +85,26 @@ const AlignmentPreview: React.FC<{
     background: 'hsl(var(--primary))',
     borderRadius: '50%',
   };
+  
+  const placeholderDivStyle: React.CSSProperties = {
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '0.7rem', // text-xs
+    color: 'hsl(var(--muted-foreground))',
+    padding: '0.25rem', // p-1
+    textAlign: 'center',
+    boxSizing: 'border-box',
+  };
+
 
   return (
     <div
       style={{ width: previewSize, height: previewSize, position: 'relative', overflow: 'hidden' }}
       className="bg-muted/50 rounded-md border"
     >
-      {/* Original Card Target Area */}
       <div
         style={{
           position: 'absolute',
@@ -99,36 +117,40 @@ const AlignmentPreview: React.FC<{
           overflow: 'hidden',
         }}
       >
-        {originalCardImageSrc ? (
+        {originalCardImageSrc && !originalPreviewError ? (
           <img
             src={originalCardImageSrc}
             alt="Original Preview"
             style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            onError={() => setOriginalPreviewError(true)}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground p-1 text-center">Original Area</div>
+          <div style={placeholderDivStyle} title={originalCardImageSrc && originalPreviewError ? "Original image error" : "Original area"}>
+            {originalCardImageSrc && originalPreviewError ? <ImageIcon className="w-4 h-4" /> : 'Original'}
+          </div>
         )}
       </div>
 
-      {/* Uploaded Image Preview */}
       {uploadedImageDimensions && uWidth > 0 && uHeight > 0 ? (
         <div style={uploadedStyle}>
-          {uploadedImageSrc ? (
+          {uploadedImageSrc && !uploadedPreviewError ? (
              <img
               src={uploadedImageSrc}
               alt="Uploaded Preview"
               style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              onError={() => setUploadedPreviewError(true)}
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-xs text-primary p-1 text-center">Uploaded Area</div>
+            <div style={{...placeholderDivStyle, color: 'hsl(var(--primary))'}} title={uploadedImageSrc && uploadedPreviewError ? "Uploaded image error" : "Uploaded area"}>
+               {uploadedImageSrc && uploadedPreviewError ? <ImageIcon className="w-4 h-4" /> : 'Uploaded'}
+            </div>
           )}
-          {/* Corner dots for the transformed uploaded image */}
           <div style={{ ...cornerDotStyle, top: '-2px', left: '-2px' }} />
           <div style={{ ...cornerDotStyle, top: '-2px', right: '-2px' }} />
           <div style={{ ...cornerDotStyle, bottom: '-2px', left: '-2px' }} />
           <div style={{ ...cornerDotStyle, bottom: '-2px', right: '-2px' }} />
         </div>
-      ) : uploadedImageSrc ? ( // Show loading only if an uploaded image is expected
+      ) : uploadedImageSrc ? ( 
         <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground animate-pulse">
             Preparing uploaded preview...
         </div>

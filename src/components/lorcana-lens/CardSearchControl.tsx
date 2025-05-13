@@ -1,21 +1,50 @@
-
 'use client';
 
 import type React from 'react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { AllCards, LorcanaCard, LorcanaSet } from '@/services/lorcana-card';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
-import { Search, CheckCircle } from 'lucide-react';
+import { Search, CheckCircle, ImageOff as ImageIcon } from 'lucide-react'; // Added ImageIcon
 
 interface CardSearchControlProps {
   allCardsData: AllCards | null;
   onCardSelect: (card: LorcanaCard) => void;
   selectedOriginalCard: LorcanaCard | null;
 }
+
+const CardThumbnail: React.FC<{ src: string | undefined; alt: string }> = ({ src, alt }) => {
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setHasError(false); // Reset error state if src changes
+  }, [src]);
+
+  if (hasError || !src) {
+    return (
+      <div className="w-10 h-[56px] rounded-sm mr-3 bg-muted flex items-center justify-center" title="Image not available">
+        <ImageIcon className="w-5 h-5 text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      width={40}
+      height={56}
+      className="rounded-sm mr-3 object-contain"
+      unoptimized
+      data-ai-hint="card thumbnail"
+      onError={() => setHasError(true)}
+    />
+  );
+};
+
 
 const CardSearchControl: React.FC<CardSearchControlProps> = ({ allCardsData, onCardSelect, selectedOriginalCard }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -68,15 +97,7 @@ const CardSearchControl: React.FC<CardSearchControlProps> = ({ allCardsData, onC
                     onClick={() => onCardSelect(card)}
                   >
                     <div className="flex items-center w-full">
-                       <Image
-                        src={card.images.thumbnail}
-                        alt={card.fullName}
-                        width={40}
-                        height={56}
-                        className="rounded-sm mr-3 object-contain"
-                        unoptimized
-                        data-ai-hint="card thumbnail"
-                      />
+                       <CardThumbnail src={card.images.thumbnail} alt={card.fullName} />
                       <div className="flex-1">
                         <p className="font-semibold">{card.fullName}</p>
                         <p className="text-xs text-muted-foreground">{card.fullIdentifier} - {getSetName(card.setCode)} - {card.rarity}</p>
