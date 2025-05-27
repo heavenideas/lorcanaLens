@@ -21,6 +21,7 @@ const initialAlignment: AlignmentSettings = {
   offsetX: 0,
   offsetY: 0,
   rotate: 0,
+  pivot: null, // Added pivot
 };
 
 const LORCANA_CARD_ASPECT_RATIO = 1468 / 2048; // width / height
@@ -147,9 +148,18 @@ export default function LorcanaLensPage() {
     if (target === 'uploaded') {
       if (!uploadedImageDimensions || !originalImageNaturalDimensions) return;
 
-      const s_fit_orig = Math.min(originalImageNaturalDimensions.width / uploadedImageDimensions.width, originalImageNaturalDimensions.height / uploadedImageDimensions.height);
-      const Eff_uw = uploadedImageDimensions.width * s_fit_orig;
-      const Eff_uh = uploadedImageDimensions.height * s_fit_orig;
+      // Calculate effective display dimensions of the uploaded image if it were scaled to match the original's aspect ratio for fitting logic
+      // This part seems complex and might need to be re-evaluated based on how transform-origin affects things.
+      // For now, we assume point.x and point.y are normalized click coordinates on the *currently displayed* (transformed) uploaded image.
+      // We want to translate the image such that this clicked point (in its transformed state) moves to the center of the viewport.
+      
+      const s_fit_orig = Math.min(
+        (originalImageNaturalDimensions.width * currentAlignmentState.scaleX) / uploadedImageDimensions.width,
+        (originalImageNaturalDimensions.height * currentAlignmentState.scaleY) / uploadedImageDimensions.height
+      );
+
+      const Eff_uw = uploadedImageDimensions.width * s_fit_orig ;
+      const Eff_uh = uploadedImageDimensions.height * s_fit_orig ;
       
       const { dispW: Disp_Eff_uw, dispH: Disp_Eff_uh } = calculateDisplayedDimensions(Eff_uw, Eff_uh, viewDimensions.width, viewDimensions.height);
 
@@ -157,14 +167,27 @@ export default function LorcanaLensPage() {
       const cosR = Math.cos(R_rad);
       const sinR = Math.sin(R_rad);
 
-      const dx_in_frame_unrotated = (point.x - 0.5) * Disp_Eff_uw * currentAlignmentState.scaleX;
-      const dy_in_frame_unrotated = (point.y - 0.5) * Disp_Eff_uh * currentAlignmentState.scaleY;
-      
-      const v_target_x_view = dx_in_frame_unrotated * cosR - dy_in_frame_unrotated * sinR;
-      const v_target_y_view = dx_in_frame_unrotated * sinR + dy_in_frame_unrotated * cosR;
+      // Determine the pivot's position in the uploaded image's untransformed, unscaled space (normalized 0-1)
+      const pivotX_norm = currentAlignmentState.pivot ? currentAlignmentState.pivot.x : 0.5;
+      const pivotY_norm = currentAlignmentState.pivot ? currentAlignmentState.pivot.y : 0.5;
 
-      const newUploadedAlignmentOffsetX = currentAlignmentState.offsetX - v_target_x_view;
-      const newUploadedAlignmentOffsetY = currentAlignmentState.offsetY - v_target_y_view;
+      // Click point relative to the pivot point in normalized coordinates of the *scaled* image
+      const dx_from_pivot_norm_scaled = (point.x - pivotX_norm) * currentAlignmentState.scaleX;
+      const dy_from_pivot_norm_scaled = (point.y - pivotY_norm) * currentAlignmentState.scaleY;
+
+      // Convert normalized-scaled-from-pivot distances to view pixels (based on effective display of uploaded image)
+      const dx_from_pivot_view = dx_from_pivot_norm_scaled * Disp_Eff_uw;
+      const dy_from_pivot_view = dy_from_pivot_norm_scaled * Disp_Eff_uh;
+      
+      // Rotate these view-pixel distances
+      const v_target_x_view_rotated = dx_from_pivot_view * cosR - dy_from_pivot_view * sinR;
+      const v_target_y_view_rotated = dx_from_pivot_view * sinR + dy_from_pivot_view * cosR;
+
+      // The current offsets are from the pivot. We want to adjust them so v_target (the clicked point) is at 0,0 in view space *relative to the pivot's screen position*.
+      // This means we want to shift the image by -v_target_x_view_rotated and -v_target_y_view_rotated.
+      // These are pixel offsets.
+      const newUploadedAlignmentOffsetX = currentAlignmentState.offsetX - v_target_x_view_rotated;
+      const newUploadedAlignmentOffsetY = currentAlignmentState.offsetY - v_target_y_view_rotated;
       
       setAlignment(prev => ({
         ...prev,
@@ -183,29 +206,24 @@ export default function LorcanaLensPage() {
         viewDimensions.height
       );
 
+      // point.x, point.y are normalized click coords on the original image display.
+      // dx/dy are distances from the center of the original image display to the click point, in *unzoomed view pixels*.
       const dx_in_frame_orig_at_zoom1 = (point.x - 0.5) * Disp_N_ow;
       const dy_in_frame_orig_at_zoom1 = (point.y - 0.5) * Disp_N_oh;
       
-      // newMainPanX/Y are the target pan values for the main viewport, in screen (zoomed) pixels
+      // We want the main view to pan so that this clicked point (dx_in_frame_orig_at_zoom1, dy_in_frame_orig_at_zoom1 from center)
+      // becomes the new center of the viewport.
+      // So, the new pan offset should be the negative of these values, scaled by zoom.
       const newMainPanX = -dx_in_frame_orig_at_zoom1 * currentZoomLevelState;
       const newMainPanY = -dy_in_frame_orig_at_zoom1 * currentZoomLevelState;
 
-      // Old main viewport pan values, in screen (zoomed) pixels
-      const oldMainPanX = currentPanOffsetState.x;
-      const oldMainPanY = currentPanOffsetState.y;
+      // Calculate the change in the main view's pan, in *unzoomed* pixels.
+      // This is how much the "world" effectively shifted from the perspective of the uploaded image.
+      const delta_unzoomed_tx = (newMainPanX - currentPanOffsetState.x) / currentZoomLevelState;
+      const delta_unzoomed_ty = (newMainPanY - currentPanOffsetState.y) / currentZoomLevelState;
 
-      // Change in pan in screen pixels
-      const deltaPanX_screen = newMainPanX - oldMainPanX;
-      const deltaPanY_screen = newMainPanY - oldMainPanY;
-
-      // Convert this change in screen pan to a change in unzoomed coordinates.
-      // This is how much Image A's world effectively shifted.
-      // currentZoomLevelState cannot be 0 due to existing component constraints (min zoom 0.5).
-      const delta_unzoomed_tx = deltaPanX_screen / currentZoomLevelState;
-      const delta_unzoomed_ty = deltaPanY_screen / currentZoomLevelState;
-
-      // Adjust Image A's alignment to compensate for the main view's pan.
-      // currentAlignmentState.offsetX/Y are in unzoomed pixels.
+      // Adjust the uploaded image's alignment offset to compensate for this "world" shift.
+      // Its current offsetX/Y are relative to its pivot (or center if no pivot).
       const newUploadedAlignmentOffsetX = currentAlignmentState.offsetX - delta_unzoomed_tx;
       const newUploadedAlignmentOffsetY = currentAlignmentState.offsetY - delta_unzoomed_ty;
       
@@ -215,7 +233,6 @@ export default function LorcanaLensPage() {
         offsetY: parseFloat(newUploadedAlignmentOffsetY.toFixed(2)),
       }));
       
-      // Set the new pan for the main view
       setMainViewPanOffset({
         x: parseFloat(newMainPanX.toFixed(2)),
         y: parseFloat(newMainPanY.toFixed(2)),
@@ -336,14 +353,14 @@ export default function LorcanaLensPage() {
               <ImageComparisonView
                 uploadedImage={uploadedImage}
                 originalCardImage={originalCard?.images.full || null}
-                alignment={alignment} // Pass the page-level alignment state
+                alignment={alignment} 
                 comparisonMode="detail"
                 pointSelectionMode={pointSelectionMode}
-                onPointSelected={handlePointSelected} // Pass the updated handler
+                onPointSelected={handlePointSelected} 
                 uploadedImageNaturalDimensions={uploadedImageDimensions}
                 originalImageNaturalDimensions={originalImageNaturalDimensions}
-                panOffset={mainViewPanOffset} // Pass the page-level panOffset
-                zoomLevel={mainViewZoomLevel} // Pass the page-level zoomLevel
+                panOffset={mainViewPanOffset} 
+                zoomLevel={mainViewZoomLevel} 
                 onPanOffsetChange={setMainViewPanOffset}
                 onZoomLevelChange={setMainViewZoomLevel}
               />
