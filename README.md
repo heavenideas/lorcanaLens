@@ -1,5 +1,5 @@
-# Firebase Studio
+# Lorcana Lens
 
-This is a NextJS starter in Firebase Studio.
+Someone tried to scam me selling me some fake cards... so I made this
 
-To get started, take a look at src/app/page.tsx.
+This is for you scammer: lorcanaman_25 on Vinted in the UK.
