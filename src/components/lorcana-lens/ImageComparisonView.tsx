@@ -278,7 +278,6 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
       if (!canvas.parentElement) return;
       if (loadError) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
-          // const dpr = window.devicePixelRatio || 1; // dprValue is now a state
           ctx.font = `${14 * dprValue}px Arial`;
           ctx.fillStyle = "hsl(var(--destructive-foreground))";
           ctx.textAlign = "center";
@@ -288,7 +287,6 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
       if (!originalLoaded || !uploadedLoaded || !originalImageNaturalDimensions || !uploadedImageNaturalDimensions) return;
 
       const container = canvas.parentElement;
-      // const dpr = window.devicePixelRatio || 1; // dprValue is now a state
       const displayWidth = container.clientWidth;
       const displayHeight = container.clientHeight;
 
@@ -434,8 +432,6 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
     transform: `scale(${alignment.scaleX}, ${alignment.scaleY}) translate(${alignment.offsetX}px, ${alignment.offsetY}px) rotate(${alignment.rotate}deg)`,
     transformOrigin: transformOrigin,
     transition: 'transform 0.2s ease-out', // Ensure this matches or is appropriate
-    width: '100%', 
-    height: '100%',
     objectFit: 'contain', // This is crucial for NextImage's layout="fill" behavior
   };
 
@@ -545,8 +541,6 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
                           layout="fill"
                           objectFit="contain" // Will be contained within its transformed bounding box
                           style={uploadedImageStyle} // Apply scale, rotate, offset, and transform-origin here
-                          width={originalImageNaturalDimensions?.width || 500} // Provide natural dimensions for better initial sizing by NextImage
-                          height={originalImageNaturalDimensions?.height || 700}
                           unoptimized
                           data-ai-hint="card uploaded"
                           onError={() => setUploadedImageError(true)}
@@ -596,3 +590,4 @@ const ImageComparisonView: React.FC<ImageComparisonViewProps> = ({
 };
 
 export default ImageComparisonView;
+
