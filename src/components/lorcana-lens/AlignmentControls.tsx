@@ -1,3 +1,4 @@
+
 'use client';
 
 import type React from 'react';
@@ -5,8 +6,9 @@ import { useState, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Move, Scaling, RotateCcw, Eye, ImageOff as ImageIcon } from 'lucide-react'; // Added ImageIcon
+import { Move, Scaling, RotateCcw, Eye, ImageOff as ImageIcon, Link as LinkIcon, Link2Off } from 'lucide-react';
 import { Button } from '../ui/button';
+import { Switch } from '@/components/ui/switch'; // Added Switch import
 
 export interface AlignmentSettings {
   scaleX: number;
@@ -169,8 +171,26 @@ const AlignmentControls: React.FC<AlignmentControlsProps> = ({
     uploadedImageSrc,
     originalCardImageSrc,
 }) => {
-  const handleSliderChange = (key: keyof AlignmentSettings, value: number[]) => {
-    onAlignmentChange({ ...alignment, [key]: value[0] });
+  const [lockAspectRatio, setLockAspectRatio] = useState(true);
+
+  const handleScaleChange = (axis: 'scaleX' | 'scaleY', value: number) => {
+    let newAlignment = { ...alignment };
+    if (axis === 'scaleX') {
+      newAlignment.scaleX = value;
+      if (lockAspectRatio) {
+        newAlignment.scaleY = value;
+      }
+    } else { // axis === 'scaleY'
+      newAlignment.scaleY = value;
+      if (lockAspectRatio) {
+        newAlignment.scaleX = value;
+      }
+    }
+    onAlignmentChange(newAlignment);
+  };
+
+  const handleNonScaleSliderChange = (key: 'offsetX' | 'offsetY' | 'rotate', value: number) => {
+    onAlignmentChange({ ...alignment, [key]: value });
   };
 
   return (
@@ -181,6 +201,19 @@ const AlignmentControls: React.FC<AlignmentControlsProps> = ({
       </CardHeader>
       <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-2 space-y-4">
+          <div className="flex items-center space-x-2 pt-2">
+            <Switch
+              id="lock-aspect-ratio"
+              checked={lockAspectRatio}
+              onCheckedChange={setLockAspectRatio}
+              aria-label="Lock aspect ratio for scaling"
+            />
+            <Label htmlFor="lock-aspect-ratio" className="flex items-center cursor-pointer">
+              {lockAspectRatio ? <LinkIcon className="mr-2 h-4 w-4" /> : <Link2Off className="mr-2 h-4 w-4" />}
+              Lock Aspect Ratio
+            </Label>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="scaleX-slider" className="flex items-center"><Scaling className="mr-2 h-4 w-4" />Scale X: {alignment.scaleX.toFixed(2)}x</Label>
             <Slider
@@ -189,7 +222,7 @@ const AlignmentControls: React.FC<AlignmentControlsProps> = ({
               max={2}
               step={0.01}
               value={[alignment.scaleX]}
-              onValueChange={(value) => handleSliderChange('scaleX', value)}
+              onValueChange={(valueArray) => handleScaleChange('scaleX', valueArray[0])}
             />
           </div>
           <div className="space-y-2">
@@ -200,7 +233,7 @@ const AlignmentControls: React.FC<AlignmentControlsProps> = ({
               max={2}
               step={0.01}
               value={[alignment.scaleY]}
-              onValueChange={(value) => handleSliderChange('scaleY', value)}
+              onValueChange={(valueArray) => handleScaleChange('scaleY', valueArray[0])}
             />
           </div>
           <div className="space-y-2">
@@ -211,7 +244,7 @@ const AlignmentControls: React.FC<AlignmentControlsProps> = ({
               max={100}
               step={1}
               value={[alignment.offsetX]}
-              onValueChange={(value) => handleSliderChange('offsetX', value)}
+              onValueChange={(valueArray) => handleNonScaleSliderChange('offsetX', valueArray[0])}
             />
           </div>
           <div className="space-y-2">
@@ -222,7 +255,7 @@ const AlignmentControls: React.FC<AlignmentControlsProps> = ({
               max={100}
               step={1}
               value={[alignment.offsetY]}
-              onValueChange={(value) => handleSliderChange('offsetY', value)}
+              onValueChange={(valueArray) => handleNonScaleSliderChange('offsetY', valueArray[0])}
             />
           </div>
           <div className="space-y-2">
@@ -233,7 +266,7 @@ const AlignmentControls: React.FC<AlignmentControlsProps> = ({
               max={45}
               step={1}
               value={[alignment.rotate]}
-              onValueChange={(value) => handleSliderChange('rotate', value)}
+              onValueChange={(valueArray) => handleNonScaleSliderChange('rotate', valueArray[0])}
             />
           </div>
           <Button onClick={onReset} variant="outline" className="w-full mt-2">
